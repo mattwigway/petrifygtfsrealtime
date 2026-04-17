@@ -1,3 +1,5 @@
+METERS_PER_DEGREE_LAT = 40000000 / 360
+
 #' Interpolate the times vehicles actually passed each stop,
 #' based on vehicle positions.
 #'
@@ -5,14 +7,15 @@
 #' we arrived at the stop
 #' IN_TRANSIT_TO means have not arrived at stop yet, so we make the stop sequence smaller -
 #' we want to find the last IN_TRANSIT_TO this stop (or, if there isn't one, the last STOPPED_AT
-#' from an earlier stop).
+#' from an earlier stop). The spec is unclear on whether this means in transit to the stop or to the next,
+#' but the GoTriangle GTFS anyways seems to use it to mean going to the stop.
 #' INCOMING_AT is similar but closer to arrival
 #' STOPPED_AT means we have arrived at the stop in the past, so add a little
 #' We then interpolate an arrival time based on distance from the previous and to the next report,
 #' so exact stop sequence spacing is not
 #'
 #' @export
-interpolate_stop_times = function(positions, static_stop_times) {
+interpolate_stop_times = function(positions, static_stop_times, dist_thresh_meters = 2000) {
   positions[, service_day := get_service_day(timestamp)]
 
   positions[,
@@ -98,6 +101,8 @@ interpolate_stop_times = function(positions, static_stop_times) {
   # interpolate based on these distances
   times[, frac := dist_from_prev / (dist_from_prev + dist_to_next)]
   times[, estimated_time := prev_time + (next_time - prev_time) * frac]
+
+  times = times[(dist_from_prev + dist_to_next) * METERS_PER_DEGREE_LAT < dist_thresh_meters, ]
 
   return(times)
 }
