@@ -57,7 +57,8 @@ interpolate_stop_times = function(positions, static_stop_times) {
       service_day,
       prev_time = timestamp,
       prev_lat = latitude,
-      prev_lon = longitude
+      prev_lon = longitude,
+      bearing
     ),
     nomatch = NULL
   ]
@@ -84,7 +85,8 @@ interpolate_stop_times = function(positions, static_stop_times) {
       next_lat = latitude,
       next_lon = longitude,
       next_time = timestamp,
-      next_stop_sequence = x.adjusted_stop_sequence
+      next_stop_sequence = x.adjusted_stop_sequence,
+      bearing
     ),
     nomatch = NULL
   ]

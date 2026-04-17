@@ -50,3 +50,5 @@ rsconnect/
 
 .Renviron
 .Rproj.user
+
+rosm.cache
