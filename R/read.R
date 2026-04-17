@@ -50,7 +50,7 @@ read_chunk = function(base_path, start_date, end_date, timezone) {
   ) |>
     rbindlist()
 
-  cat(glue("read {scales::comma(nrow(updates))} updates\n"))
+  cat(glue("read {scales::comma(nrow(updates))} updates"), sep = "\n")
 
   pos_end_date = end_date + days(1)
   cat(glue("Reading positions from {start_date} to {pos_end_date} (inclusive)..."))
@@ -86,11 +86,11 @@ read_chunk = function(base_path, start_date, end_date, timezone) {
   ) |>
     rbindlist()
 
-  cat(glue(".. read {scales::comma(nrow(positions))} positions\n"))
+  cat(glue(".. read {scales::comma(nrow(positions))} positions"), sep = "\n")
 
   positions = positions[, .SD[1], by = c("timestamp", "vehicle_id")]
 
-  cat(glue("After deduplication, {scales::comma(nrow(positions))} positions\n"))
+  cat(glue("After deduplication, {scales::comma(nrow(positions))} positions"), sep = "\n")
 
   return(list(
     positions = positions,
@@ -101,7 +101,7 @@ read_chunk = function(base_path, start_date, end_date, timezone) {
 #' Read all of the static GTFS into a big table of stop times,
 #' with service_day_start indicating the date the data were retrieved.
 read_static_stop_times = function(base_path) {
-  lapply(Sys.glob(file.path(DATA_PATH, "gotriangle/static/*.zip")), function(filename) {
+  lapply(Sys.glob(file.path(base_path, "static/*.zip")), function(filename) {
     gtfs = read_gtfs(filename)
     gtfs$stop_times$service_day_start = ymd(str_extract(filename, "([0-9]{4}-[0-9]+-[0-9]+)[^/]+$", group = 1))
     gtfs$stops[, .(stop_id, stop_lat, stop_lon)][gtfs$stop_times, on = .(stop_id)]
