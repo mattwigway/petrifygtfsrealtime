@@ -12,7 +12,7 @@ METERS_PER_DEGREE_LAT = 40000000 / 360
 #' INCOMING_AT is similar but closer to arrival
 #' STOPPED_AT means we have arrived at the stop in the past, so add a little
 #' We then interpolate an arrival time based on distance from the previous and to the next report,
-#' so exact stop sequence spacing is not
+#' so exact stop sequence spacing is not important, just ordering
 #'
 #' @export
 interpolate_stop_times = function(positions, static_stop_times, dist_thresh_meters = 2000) {
@@ -45,6 +45,9 @@ interpolate_stop_times = function(positions, static_stop_times, dist_thresh_mete
   ]
 
   expanded_stop_times = static_stop_times[all_service_days, on = .(service_day_start == gtfs_date), allow.cartesian = T]
+
+  setorder(expanded_stop_times, service_day, trip_id, stop_sequence)
+  setorder(positions, service_day, vehicle_id, adjusted_stop_sequence, timestamp)
 
   times = positions[
     expanded_stop_times,
