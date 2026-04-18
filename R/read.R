@@ -52,6 +52,14 @@ read_chunk = function(base_path, start_date, end_date, timezone) {
 
   cat(glue("read {scales::comma(nrow(updates))} updates"), sep = "\n")
 
+  updates = updates[
+    (is.na(stop_schedule_relationship) | stop_schedule_relationship == "SCHEDULED") &
+    (is.na(trip_schedule_relationship) | trip_schedule_relationship == "SCHEDULED") &
+    !is.na(arrival_time),
+  ]
+
+  cat(glue("{scales::comma(nrow(updates))} updates contain predictions"), sep = "\n")
+
   pos_end_date = end_date + days(1)
   cat(glue("Reading positions from {start_date} to {pos_end_date} (inclusive)..."))
   positions = map(
