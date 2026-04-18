@@ -15,7 +15,13 @@ METERS_PER_DEGREE_LAT = 40000000 / 360
 #' so exact stop sequence spacing is not important, just ordering
 #'
 #' @export
-interpolate_stop_times = function(positions, static_stop_times, dist_thresh_meters = 2000) {
+interpolate_stop_times = function(
+  positions,
+  static_stop_times,
+  dist_thresh_meters = 2000,
+  off_route_max_proportion = 0.7,
+  on_route_min_stops = 4
+) {
   positions[, service_day := get_service_day(timestamp)]
 
   positions[,
@@ -47,7 +53,62 @@ interpolate_stop_times = function(positions, static_stop_times, dist_thresh_mete
   expanded_stop_times = static_stop_times[all_service_days, on = .(service_day_start == gtfs_date), allow.cartesian = T]
 
   setorder(expanded_stop_times, service_day, trip_id, stop_sequence)
-  setorder(positions, service_day, vehicle_id, adjusted_stop_sequence, timestamp)
+  setorder(positions, service_day, trip_id, adjusted_stop_sequence, timestamp)
+
+  # filter out trip IDs/service day combinations where the stops are not a subset of the trips
+  # these are probably operators forgetting to switch the headsign
+  orig_ntrips = positions[, uniqueN(.SD), .SDcols = c("service_day", "trip_id")]
+
+  # find the ones that match to stops in the GTFS
+  positions = expanded_stop_times[
+    positions,
+    on = .(service_day, trip_id, stop_id),
+    .(
+      service_day,
+      trip_id,
+      adjusted_stop_sequence,
+      timestamp,
+      latitude,
+      longitude,
+      bearing,
+      # record the stop ID _from the stop times_, which will be NA if it didn't match
+      matched_stop_id = x.stop_id
+    )
+  ]
+
+  # filter to just the ones where the alleged stops on the trip match the GTFS
+  # TODO should also look at order - but for most agencies that won't be an issue
+  # because most stops in each direction are different (pairs on opposite sides of street).
+  # it's okay if all the GTFS stops aren't there - we might have missed one in between
+  # updates if they're close together or if the GPS signal got lost for a bit.
+
+  # Many of the errors seem to be having the correct trip followed by an incorrect one,
+  # so don't just throw out if there's a few stops that don't match. We discard (1) trips
+  # where more than off_route_max_prop observations are off route
+  positions = positions[,
+    if (mean(is.na(matched_stop_id)) <= off_route_max_proportion) .SD,
+    by = .(service_day, trip_id)
+  ]
+
+  # (2) any individual position updates that are off route
+  positions = positions[!is.na(matched_stop_id), ]
+
+  # (3) any trips with fewer than on_route_min_stops after the previous filtering
+  positions = positions[, if (.N >= on_route_min_stops) .SD, by = .(trip_id, service_day)]
+
+  new_ntrips = positions[, uniqueN(.SD), .SDcols = c("service_day", "trip_id")]
+
+  n_removed = orig_ntrips - new_ntrips
+  pct_removed = round(n_removed / orig_ntrips * 100, 2)
+
+  if (n_removed > 0) {
+    cat(
+      glue(
+        "Removed {n_removed} trips ({pct_removed}%) because stop IDs in GTFS-realtime did not match static GTFS."
+      ),
+      "(Perhaps the operator forgot to change the headsign.)\n"
+    )
+  }
 
   times = positions[
     expanded_stop_times,
