@@ -53,7 +53,7 @@ interpolate_stop_times = function(
   expanded_stop_times = static_stop_times[all_service_days, on = .(service_day_start == gtfs_date), allow.cartesian = T]
 
   setorder(expanded_stop_times, service_day, trip_id, stop_sequence)
-  setorder(positions, service_day, trip_id, adjusted_stop_sequence, timestamp)
+  setorder(positions, service_day, trip_id, timestamp)
 
   # filter out trip IDs/service day combinations where the stops are not a subset of the trips
   # these are probably operators forgetting to switch the headsign
@@ -90,11 +90,22 @@ interpolate_stop_times = function(
     by = .(service_day, trip_id)
   ]
 
-  # (2) any individual position updates that are off route
+  # (2) any position updates where stop_sequence runs backwards (and all subsequent updates)
+  # (e.g. t834-b404-sl4 on 2026-01-23 - both directions of the trip are in one trip
+  # in the realtime data, and stop-sequence somehow goes back to zero - like the AVL
+  # knew it was a new trip but the trip ID didn't get updated.)
+  positions = positions[,
+    # keep up until the point they stop being monotonic, drop everything after that. cumall will be false
+    # if anything before this is false
+    .SD[cumall(adjusted_stop_sequence >= shift(adjusted_stop_sequence, type = "lag", n = 1, fill = -Inf)), ],
+    by = .(service_day, trip_id)
+  ]
+
+  # (3) any individual position updates that are off route
   positions = positions[!is.na(matched_stop_id), ]
 
-  # (3) any trips with fewer than on_route_min_stops after the previous filtering
-  positions = positions[, if (.N >= on_route_min_stops) .SD, by = .(trip_id, service_day)]
+  # (4) any trips with fewer than on_route_min_stops after the previous filtering
+  positions = positions[, if (.N >= on_route_min_stops) .SD, by = .(service_day, trip_id)]
 
   new_ntrips = positions[, uniqueN(.SD), .SDcols = c("service_day", "trip_id")]
 

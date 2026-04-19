@@ -6,6 +6,7 @@
 #' @importFrom data.table fcase
 #' @importFrom data.table rbindlist
 #' @importFrom data.table uniqueN
+#' @importFrom dplyr cumall
 #' @importFrom glue glue
 #' @importFrom gtfsrealtime read_gtfsrt_positions
 #' @importFrom gtfsrealtime read_gtfsrt_trip_updates
