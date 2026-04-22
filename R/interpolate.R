@@ -58,6 +58,7 @@ interpolate_stop_times = function(
   # filter out trip IDs/service day combinations where the stops are not a subset of the trips
   # these are probably operators forgetting to switch the headsign
   orig_ntrips = positions[, uniqueN(.SD), .SDcols = c("service_day", "trip_id")]
+  orig_nrow = nrow(positions)
 
   # find the ones that match to stops in the GTFS
   positions = expanded_stop_times[
@@ -108,14 +109,17 @@ interpolate_stop_times = function(
   positions = positions[, if (.N >= on_route_min_stops) .SD, by = .(service_day, trip_id)]
 
   new_ntrips = positions[, uniqueN(.SD), .SDcols = c("service_day", "trip_id")]
+  new_nrow = nrow(positions)
 
   n_removed = orig_ntrips - new_ntrips
   pct_removed = round(n_removed / orig_ntrips * 100, 2)
+  n_pos_removed = orig_nrow - new_nrow
+  pct_pos_removed = round(n_pos_removed / orig_nrow * 100, 2)
 
   if (n_removed > 0) {
     cat(
       glue(
-        "Removed {n_removed} trips ({pct_removed}%) because stop IDs in GTFS-realtime did not match static GTFS."
+        "Removed {n_pos_removed} ({pct_pos_removed}%) positions and {n_removed} entire trips ({pct_removed}%) because stop IDs in GTFS-realtime did not match static GTFS."
       ),
       "(Perhaps the operator forgot to change the headsign.)\n"
     )
