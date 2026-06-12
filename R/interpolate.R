@@ -53,10 +53,12 @@ interpolate_stop_times = function(
   setorder(stop_times, trip_id, stop_sequence)
   setorder(positions, trip_id, timestamp)
 
-  # Find the previous stop time for each stop
+  # Find the previous realtime position for each stop
   times = positions[
     stop_times,
-    on = .(trip_id, stop_id, adjusted_stop_sequence == stop_sequence),
+    # _not_ including stop_id here - need to roll to next or previous stop if the
+    # current stop doesn't match
+    on = .(trip_id, adjusted_stop_sequence == stop_sequence),
     roll = TRUE,
     .(
       trip_id,
@@ -78,7 +80,9 @@ interpolate_stop_times = function(
   # and the next search forward
   times = positions[
     times,
-    on = .(trip_id, stop_id, adjusted_stop_sequence == stop_sequence),
+    # _not_ including stop_id here - need to roll to next or previous stop if the
+    # current stop doesn't match
+    on = .(trip_id, adjusted_stop_sequence == stop_sequence),
     roll = -Inf,
     .(
       trip_id,
