@@ -27,6 +27,10 @@ petrify <- function(rt, static, override_calendar = TRUE, ...) {
   times[, departure_time := arrival_time]
   times[, c("estimated_time", "prev_stop_sequence", "next_stop_sequence") := NULL]
 
+  # avoid issues with gtfsio not handling columns with multiple classes
+  times[, prev_time := as.character(prev_time)]
+  times[, next_time := as.character(next_time)]
+
   feed$stop_times = times
 
   return(feed)
