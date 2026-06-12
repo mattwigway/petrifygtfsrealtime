@@ -81,6 +81,12 @@ p = petrify(realtime, static)
 ```
 
 ```{r}
+patterns = gtfstools::get_stop_times_patterns(p)
+stringline(p, patterns, "720-13196")
+ggsave("720.pdf", width=8, height=14)
+```
+
+```{r}
 write_gtfs(p, "la_metro_test.zip")
 ```
 
