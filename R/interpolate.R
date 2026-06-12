@@ -1,4 +1,5 @@
 METERS_PER_DEGREE_LAT = 40000000 / 360
+KMH_TO_MS = 1000 / 3600
 
 #' Interpolate the times vehicles actually passed each stop,
 #' based on vehicle positions.
@@ -17,13 +18,12 @@ METERS_PER_DEGREE_LAT = 40000000 / 360
 #' @export
 interpolate_stop_times = function(
   positions,
-  static_stop_times,
+  static,
+  extrapolate_speed_kmh = 25,
   dist_thresh_meters = 2000,
   off_route_max_proportion = 0.7,
   on_route_min_stops = 4
 ) {
-  positions[, service_day := get_service_day(timestamp)]
-
   positions[,
     adjusted_stop_sequence := current_stop_sequence +
       fcase(
@@ -34,100 +34,29 @@ interpolate_stop_times = function(
       )
   ]
 
-  positions = positions[!is.na(adjusted_stop_sequence), ]
+  n_miss = sum(is.na(positions$adjusted_stop_sequence))
 
-  # we match trips with positions by service days
-  # so we first expand stop times so we have a record of each trip
-  # for every service day.
-  # this is a little inefficient b/c not every trip runs on every day, but
-  # the extras get dropped in the next join
-  all_service_days = data.table(service_day = unique(positions$service_day))
-  gtfs_days = data.table(gtfs_date = unique(static_stop_times$service_day_start))
-  all_service_days = gtfs_days[
-    all_service_days,
-    on = .(gtfs_date == service_day),
-    roll = TRUE,
-    .(service_day = i.service_day, gtfs_date = x.gtfs_date)
-  ]
-
-  expanded_stop_times = static_stop_times[all_service_days, on = .(service_day_start == gtfs_date), allow.cartesian = T]
-
-  setorder(expanded_stop_times, service_day, trip_id, stop_sequence)
-  setorder(positions, service_day, trip_id, timestamp)
-
-  # filter out trip IDs/service day combinations where the stops are not a subset of the trips
-  # these are probably operators forgetting to switch the headsign
-  orig_ntrips = positions[, uniqueN(.SD), .SDcols = c("service_day", "trip_id")]
-  orig_nrow = nrow(positions)
-
-  # find the ones that match to stops in the GTFS
-  positions = expanded_stop_times[
-    positions,
-    on = .(service_day, trip_id, stop_id),
-    .(
-      service_day,
-      trip_id,
-      adjusted_stop_sequence,
-      timestamp,
-      latitude,
-      longitude,
-      bearing,
-      # record the stop ID _from the stop times_, which will be NA if it didn't match
-      matched_stop_id = x.stop_id
-    )
-  ]
-
-  # filter to just the ones where the alleged stops on the trip match the GTFS
-  # TODO should also look at order - but for most agencies that won't be an issue
-  # because most stops in each direction are different (pairs on opposite sides of street).
-  # it's okay if all the GTFS stops aren't there - we might have missed one in between
-  # updates if they're close together or if the GPS signal got lost for a bit.
-
-  # Many of the errors seem to be having the correct trip followed by an incorrect one,
-  # so don't just throw out if there's a few stops that don't match. We discard (1) trips
-  # where more than off_route_max_prop observations are off route
-  positions = positions[,
-    if (mean(is.na(matched_stop_id)) <= off_route_max_proportion) .SD,
-    by = .(service_day, trip_id)
-  ]
-
-  # (2) any position updates where stop_sequence runs backwards (and all subsequent updates)
-  # (e.g. t834-b404-sl4 on 2026-01-23 - both directions of the trip are in one trip
-  # in the realtime data, and stop-sequence somehow goes back to zero - like the AVL
-  # knew it was a new trip but the trip ID didn't get updated.)
-  positions = positions[,
-    # keep up until the point they stop being monotonic, drop everything after that. cumall will be false
-    # if anything before this is false
-    .SD[cumall(adjusted_stop_sequence >= shift(adjusted_stop_sequence, type = "lag", n = 1, fill = -Inf)), ],
-    by = .(service_day, trip_id)
-  ]
-
-  # (3) any individual position updates that are off route
-  positions = positions[!is.na(matched_stop_id), ]
-
-  # (4) any trips with fewer than on_route_min_stops after the previous filtering
-  positions = positions[, if (.N >= on_route_min_stops) .SD, by = .(service_day, trip_id)]
-
-  new_ntrips = positions[, uniqueN(.SD), .SDcols = c("service_day", "trip_id")]
-  new_nrow = nrow(positions)
-
-  n_removed = orig_ntrips - new_ntrips
-  pct_removed = round(n_removed / orig_ntrips * 100, 2)
-  n_pos_removed = orig_nrow - new_nrow
-  pct_pos_removed = round(n_pos_removed / orig_nrow * 100, 2)
-
-  if (n_removed > 0) {
-    cat(
-      glue(
-        "Removed {n_pos_removed} ({pct_pos_removed}%) positions and {n_removed} entire trips ({pct_removed}%) because stop IDs in GTFS-realtime did not match static GTFS."
-      ),
-      "(Perhaps the operator forgot to change the headsign.)\n"
+  if (n_miss > 0) {
+    cli::cli_warn(
+      sprintf(
+        "%d position reports (%.2f%%) are missing stop sequences, skipping",
+        n_miss,
+        n_miss / nrow(positions) * 100
+      )
     )
   }
 
+  positions = positions[!is.na(adjusted_stop_sequence), ]
+
+  stop_times = static$stops[, .(stop_id, stop_lat, stop_lon)][static$stop_times, on = .(stop_id)]
+
+  setorder(stop_times, trip_id, stop_sequence)
+  setorder(positions, trip_id, timestamp)
+
+  # Find the previous stop time for each stop
   times = positions[
-    expanded_stop_times,
-    on = .(service_day, trip_id, adjusted_stop_sequence == stop_sequence),
+    stop_times,
+    on = .(trip_id, stop_id, adjusted_stop_sequence == stop_sequence),
     roll = TRUE,
     .(
       trip_id,
@@ -136,22 +65,20 @@ interpolate_stop_times = function(
       stop_id = i.stop_id,
       stop_lat,
       stop_lon,
-      service_day,
       prev_time = timestamp,
       prev_lat = latitude,
       prev_lon = longitude,
       bearing
-    ),
-    nomatch = NULL
+    )
   ]
 
-  stopifnot(all(times$stop_sequence > times$prev_stop_sequence))
-  stopifnot(!anyDuplicated(times[, .(service_day, trip_id, stop_sequence)]))
+  stopifnot(all(times$stop_sequence > times$prev_stop_sequence, na.rm = T))
+  stopifnot(!anyDuplicated(times[, .(trip_id, stop_sequence)]))
 
-  # and now search forward
+  # and the next search forward
   times = positions[
     times,
-    on = .(service_day, trip_id, adjusted_stop_sequence == stop_sequence),
+    on = .(trip_id, stop_id, adjusted_stop_sequence == stop_sequence),
     roll = -Inf,
     .(
       trip_id,
@@ -163,25 +90,61 @@ interpolate_stop_times = function(
       stop_lon,
       stop_sequence,
       prev_stop_sequence,
-      service_day,
       next_lat = latitude,
       next_lon = longitude,
       next_time = timestamp,
       next_stop_sequence = x.adjusted_stop_sequence,
       bearing
-    ),
-    nomatch = NULL
+    )
   ]
 
   # interpolate
   # spherical approximation
-  times[, dist_from_prev := sqrt((stop_lat - prev_lat)^2 + ((stop_lon - prev_lon) * cos(stop_lat))^2)]
-  times[, dist_to_next := sqrt((stop_lat - next_lat)^2 + ((stop_lon - next_lon) * cos(stop_lat))^2)]
+  times[,
+    dist_from_prev := s2_distance(
+      s2_geog_point(prev_lon, prev_lat),
+      s2_geog_point(stop_lon, stop_lat)
+    )
+  ]
+  times[,
+    dist_to_next := s2_distance(
+      s2_geog_point(stop_lon, stop_lat),
+      s2_geog_point(next_lon, next_lat)
+    )
+  ]
   # interpolate based on these distances
   times[, frac := dist_from_prev / (dist_from_prev + dist_to_next)]
   times[, estimated_time := prev_time + (next_time - prev_time) * frac]
 
-  times = times[(dist_from_prev + dist_to_next) * METERS_PER_DEGREE_LAT < dist_thresh_meters, ]
+  # we may lose start and end of trip if the vehicle powered up/down and reached the stop before the
+  # first position report we recorded. Allow up to one stop per trip to be extrapolated beyond the
+  # last position.
+  setorder(times, trip_id, stop_sequence)
+
+  extrapolate_start = times[,
+    .I[which.max(ifelse(is.na(prev_lat) & !is.na(next_lat), stop_sequence, -Inf))],
+    by = trip_id
+  ]$V1
+
+  stopifnot(all(is.na(times[extrapolate_start, estimated_time])))
+  times[
+    extrapolate_start,
+    estimated_time := next_time -
+      lubridate::period(dist_to_next / (extrapolate_speed_kmh * KMH_TO_MS), "second")
+  ]
+
+  extrapolate_end = times[,
+    .I[which.min(ifelse(!is.na(prev_lat) & is.na(next_lat), stop_sequence, Inf))],
+    by = trip_id
+  ]$V1
+  stopifnot(all(is.na(times[extrapolate_end, estimated_time])))
+  times[
+    extrapolate_end,
+    estimated_time := prev_time +
+      lubridate::period(dist_to_next / (extrapolate_speed_kmh * KMH_TO_MS), "second")
+  ]
+
+  times = times[!is.na(estimated_time), ]
 
   return(times)
 }

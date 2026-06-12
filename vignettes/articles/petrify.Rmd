@@ -1,0 +1,95 @@
+---
+title: "petrify"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(gtfsrealtime)
+library(gtfstools)
+library(lubridate)
+library(purrr)
+library(stringr)
+library(data.table)
+library(tidyverse)
+library(ggunc)
+#library(petrifygtfsrealtime)
+devtools::load_all()
+```
+
+## Read data
+
+### Read static GTFS
+
+```{r}
+static = read_gtfs(Sys.getenv("GTFS_PATH"))
+```
+
+### Read realtime data
+
+Data are saved with filenames in UTC, figure out what files we need for a day in local time.
+
+```{r}
+start = ymd_hms("2026-06-02 03:00:00", tz = "America/Los_Angeles")
+
+start_utc = with_tz(start, "Etc/UTC")
+end_utc = start_utc + period(1, "day")
+
+rt_files = map(seq(start_utc, end_utc, by="day"), function (date) {
+  path = file.path(Sys.getenv("GTFS_RT_PATH"), format(date, "%Y/%m/%d"), "vehicle-positions")
+  stopifnot(dir.exists(path))
+  candidates = list.files(path, full.names = TRUE)
+
+  # get the date-time from the filename
+  dates = lubridate::ymd_hms(str_extract(candidates, "[0-9]{14}"))
+
+  return(candidates[dates >= start_utc & dates <= end_utc])
+}) |> unlist()
+
+realtime = map(rt_files, \(x) read_gtfsrt_positions(x, "America/Los_Angeles")) |>
+  rbindlist()
+```
+
+## Remove duplicates
+
+The same position update may appear in multiple files. Fix.
+
+```{r}
+realtime = realtime[,.SD[1], by=.(vehicle_id, timestamp)]
+```
+
+```{r}
+realtime |>
+  filter(is.na(trip_id)) |>
+  ggplot(aes(x=timestamp)) +
+    geom_histogram()
+```
+
+```{r}
+realtime |>
+  ggplot(aes(x=timestamp)) +
+    geom_histogram()
+```
+
+```{r}
+p = petrify(realtime, static)
+```
+
+```{r}
+write_gtfs(p, "la_metro_test.zip")
+```
+
+```{r}
+realtime |>
+  filter(is.na(trip_id)) |>
+  mutate(latitude=round(latitude, digits=2), longitude=round(longitude, digits=2)) |>
+  count(latitude, longitude) |>
+  ggplot(aes(x=longitude, y=latitude, fill=log(n))) +
+    geom_raster()
+
+```

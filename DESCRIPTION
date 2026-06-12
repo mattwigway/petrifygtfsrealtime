@@ -1,4 +1,4 @@
-Package: GtfsRtAccuracy
+Package: petrifygtfsrt
 Title: What the Package Does (One Line, Title Case)
 Version: 0.0.0.9000
 Authors@R: 
@@ -8,8 +8,9 @@ License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 Imports: 
+    checkmate,
+    cli,
     data.table,
     dplyr,
     glue,
@@ -17,5 +18,9 @@ Imports:
     gtfstools,
     lubridate,
     purrr,
+    s2,
     scales,
     stringr
+Config/Needs/website: rmarkdown
+Config/roxygen2/version: 8.0.0
+RoxygenNote: 8.0.0

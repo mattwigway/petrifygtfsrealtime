@@ -2,3 +2,4 @@
 ^renv\.lock$
 ^GtfsRtAccuracy\.Rproj$
 ^\.Rproj\.user$
+^vignettes/articles$
