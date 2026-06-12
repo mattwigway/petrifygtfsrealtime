@@ -122,7 +122,7 @@ interpolate_stop_times = function(
 
   # we may lose start and end of trip if the vehicle powered up/down and reached the stop before the
   # first position report we recorded. Allow up to one stop per trip to be extrapolated beyond the
-  # last position.
+  # first/last position.
   setorder(times, trip_id, stop_sequence)
 
   extrapolate_start = times[,
@@ -134,7 +134,7 @@ interpolate_stop_times = function(
   times[
     extrapolate_start,
     estimated_time := next_time -
-      lubridate::period(dist_to_next / (extrapolate_speed_kmh * KMH_TO_MS), "second")
+      lubridate::seconds(dist_to_next / (extrapolate_speed_kmh * KMH_TO_MS))
   ]
 
   extrapolate_end = times[,
@@ -145,7 +145,7 @@ interpolate_stop_times = function(
   times[
     extrapolate_end,
     estimated_time := prev_time +
-      lubridate::period(dist_to_next / (extrapolate_speed_kmh * KMH_TO_MS), "second")
+      lubridate::seconds(dist_from_prev / (extrapolate_speed_kmh * KMH_TO_MS))
   ]
 
   times = times[!is.na(estimated_time), ]
