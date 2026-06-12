@@ -63,39 +63,26 @@ The same position update may appear in multiple files. Fix.
 realtime = realtime[,.SD[1], by=.(vehicle_id, timestamp)]
 ```
 
-```{r}
-realtime |>
-  filter(is.na(trip_id)) |>
-  ggplot(aes(x=timestamp)) +
-    geom_histogram()
-```
+## Petrify GTFS
 
-```{r}
-realtime |>
-  ggplot(aes(x=timestamp)) +
-    geom_histogram()
-```
+This is the core function of the package.
 
 ```{r}
 p = petrify(realtime, static)
 ```
 
+## Stringline plots
+
+A [stringline plot](https://pvibien.com/stringline.htm) is a very useful tool for debugging the output. Here, we make a plot for the LA Metro 720 to make sure it looks as expected. These plots are dense, so it is often useful to save as a PDF for ability to pan and zoom.
+
 ```{r}
 patterns = gtfstools::get_stop_times_patterns(p)
-stringline(p, patterns, "720-13196")
+stringline(p, patterns, "720-13196", directionid = 0)
 ggsave("720.pdf", width=8, height=14)
 ```
 
+## Write GTFS for further analysis
+
 ```{r}
 write_gtfs(p, "la_metro_test.zip")
-```
-
-```{r}
-realtime |>
-  filter(is.na(trip_id)) |>
-  mutate(latitude=round(latitude, digits=2), longitude=round(longitude, digits=2)) |>
-  count(latitude, longitude) |>
-  ggplot(aes(x=longitude, y=latitude, fill=log(n))) +
-    geom_raster()
-
 ```
