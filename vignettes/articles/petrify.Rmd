@@ -18,8 +18,7 @@ library(stringr)
 library(data.table)
 library(tidyverse)
 library(ggunc)
-#library(petrifygtfsrealtime)
-devtools::load_all()
+library(petrifygtfsrealtime)
 ```
 
 ## Read data
