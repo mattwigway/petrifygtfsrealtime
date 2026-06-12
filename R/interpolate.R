@@ -53,6 +53,17 @@ interpolate_stop_times = function(
   setorder(stop_times, trip_id, stop_sequence)
   setorder(positions, trip_id, timestamp)
 
+  # if they turn on the bus before leaving the terminal, we will have many STOPPED_AT records
+  # that are before the trip really starts. Keep only the last one.
+  # TODO trip IDs may not be unique in all feeds
+  positions = positions[,
+    .SD[which.max(ifelse(current_stop_sequence == min(current_stop_sequence), timestamp, -Inf)):.N],
+    by = "trip_id"
+  ]
+
+  # filter out trips that never started
+  positions = positions[, if (length(unique(current_stop_sequence)) > 1) .SD, by = "trip_id"]
+
   # Find the previous realtime position for each stop
   times = positions[
     stop_times,
