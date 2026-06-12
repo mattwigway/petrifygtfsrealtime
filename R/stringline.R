@@ -13,24 +13,32 @@ get_global_stop_sequences = function(gtfs, patterns, routeid, directionid) {
   relevant_stop_times[, .(stop_number = max(stop_number)), by = stop_id]
 }
 
-stringline = function(gtfs, patterns, routeid) {
-  global_stop_sequences = get_global_stop_sequences(gtfs, patterns, routeid, 0)
-  trips = gtfs$trips[route_id == routeid & direction_id == 0, ]
+stringline = function(gtfs, patterns, routeid, directionid, show_trip_ids = FALSE) {
+  global_stop_sequences = get_global_stop_sequences(gtfs, patterns, routeid, directionid)
+  trips = gtfs$trips[route_id == routeid & direction_id == directionid, ]
   stop_times = gtfs$stop_times[trips, on = "trip_id", nomatch = NULL]
   stop_times = gtfs$stops[stop_times, on = "stop_id"]
   stop_times = global_stop_sequences[stop_times, on = "stop_id"]
   stop_times[, time := to_datetime(arrival_time, lubridate::ymd("2026-01-01"))]
 
-  ggplot(stop_times, aes(x = reorder(stop_name, stop_number), y = time, group = trip_id)) +
+  p = ggplot(stop_times, aes(x = reorder(stop_name, stop_number), y = time, group = trip_id)) +
     geom_line(linewidth = 0.25) +
-    geom_text(
-      data = stop_times[, .SD[which.min(stop_sequence)], by = "trip_id"],
-      aes(label = trip_id),
-      hjust = 0,
-      size = 2
-    ) +
     scale_y_datetime(labels = \(x) format(x, "%H:%M")) +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+    xlab("Stop") +
+    ylab("Time")
+
+  if (show_trip_ids) {
+    p = p +
+      geom_text(
+        data = stop_times[, .SD[which.min(stop_sequence)], by = "trip_id"],
+        aes(label = trip_id),
+        hjust = 0,
+        size = 2
+      )
+  }
+
+  p
 }
 
 to_datetime = function(gtfstime, date) {
